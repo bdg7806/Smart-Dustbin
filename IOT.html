@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart IoT Dustbin Dashboard</title>
+
+  <!-- Chart.js & Leaflet.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <style>
+    body {
+      font-family: "Poppins", sans-serif;
+      background: #f6f8fb;
+      margin: 0;
+      color: #222;
+    }
+    header {
+      background: #0078ff;
+      color: white;
+      text-align: center;
+      padding: 15px;
+    }
+    header h1 { margin: 0; font-size: 1.8em; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      padding: 30px;
+      justify-items: center;
+    }
+
+    .card {
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      padding: 20px;
+      width: 100%;
+      max-width: 350px;
+      text-align: center;
+    }
+
+    .card h2 { color: #0078ff; margin-bottom: 10px; }
+    .status { font-weight: bold; padding: 5px 10px; border-radius: 8px; display: inline-block; }
+    .status.empty { background: #e0e0e0; color: #333; }
+    .status.half { background: #ffcc00; color: #333; }
+    .status.full { background: #ff4444; color: white; }
+
+    #map { width: 90%; height: 450px; margin: 30px auto; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+
+    footer {
+      background: #0078ff;
+      color: white;
+      text-align: center;
+      padding: 15px;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Smart IoT Dustbin Dashboard</h1>
+    <p>Multiple Bin Monitoring System using ThingSpeak</p>
+  </header>
+
+  <!-- Cards for each bin -->
+  <div class="grid" id="binGrid"></div>
+
+  <!-- Live Map -->
+  <div id="map"></div>
+
+  <footer>
+    <p>Developed by <strong>Your Name</strong> | IoT Smart City Project</p>
+  </footer>
+
+  <script>
+    // === CONFIGURATION ===
+    const bins = [
+      { id: 1, name: "Bin #1 - Main Gate", channel: "123456", apiKey: "ABCDEF123456" },
+      { id: 2, name: "Bin #2 - Admin Block", channel: "789012", apiKey: "ZYXWV987654" },
+      { id: 3, name: "Bin #3 - The Grand Staircase", channel: "345678", apiKey: "LMNOPQ456789" },
+      { id: 4, name: "Bin #4 - Mingos Canteen", channel: "345679", apiKey: "LMNTPQ456789" }
+
+    ];
+
+    const binGrid = document.getElementById("binGrid");
+
+    // Create a card for each bin
+    bins.forEach(bin => {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.id = `bin-${bin.id}`;
+      card.innerHTML = `
+        <h2>${bin.name}</h2>
+        <p><strong>Fill Level:</strong> <span id="fill-${bin.id}">--</span>%</p>
+        <p><strong>Status:</strong> <span id="status-${bin.id}" class="status">--</span></p>
+        <p><strong>Location:</strong> <span id="loc-${bin.id}">--</span></p>
+        <p><strong>Last Update:</strong> <span id="time-${bin.id}">--</span></p>
+      `;
+      binGrid.appendChild(card);
+    });
+
+    // === MAP SETUP ===
+    let map = L.map('map').setView([12.9716, 77.5946], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+    let markers = {};
+
+    // === FETCH DATA ===
+    async function updateBins() {
+      for (const bin of bins) {
+        try {
+          const res = await fetch(`https://api.thingspeak.com/channels/${bin.channel}/feeds/last.json?api_key=${bin.apiKey}`);
+          const data = await res.json();
+
+          const fill = parseInt(data.field1);
+          const lat = parseFloat(data.field2);
+          const lon = parseFloat(data.field3);
+          const time = new Date(data.created_at).toLocaleString();
+
+          document.getElementById(`fill-${bin.id}`).innerText = fill || "--";
+          document.getElementById(`time-${bin.id}`).innerText = time || "--";
+          document.getElementById(`loc-${bin.id}`).innerText = (lat && lon) ? `${lat.toFixed(4)}, ${lon.toFixed(4)}` : "--";
+
+          const statusEl = document.getElementById(`status-${bin.id}`);
+          if (fill >= 80) { statusEl.textContent = "FULL"; statusEl.className = "status full"; }
+          else if (fill >= 50) { statusEl.textContent = "HALF"; statusEl.className = "status half"; }
+          else { statusEl.textContent = "EMPTY"; statusEl.className = "status empty"; }
+
+          // Update or add marker
+          if (lat && lon) {
+            if (markers[bin.id]) {
+              markers[bin.id].setLatLng([lat, lon]);
+            } else {
+              markers[bin.id] = L.marker([lat, lon]).addTo(map).bindPopup(`${bin.name}<br>Fill: ${fill}%`);
+            }
+          }
+
+        } catch (err) {
+          console.error(`Error fetching data for ${bin.name}:`, err);
+        }
+      }
+    }
+
+    updateBins();
+    setInterval(updateBins, 15000);
+  </script>
+</body>
+</html>
